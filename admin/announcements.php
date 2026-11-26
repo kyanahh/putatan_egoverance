@@ -1,6 +1,4 @@
 <?php
-date_default_timezone_set('Asia/Manila');
-
 require_once '../includes/admin_auth.php';
 require_once '../includes/audit_helper.php';
 require_once '../includes/notification_helper.php';
@@ -14,7 +12,7 @@ if (empty($_SESSION['csrf_token'])) {
 }
 
 $csrf_token = $_SESSION['csrf_token'];
-$admin_id = (int) $_SESSION['user_id'];
+$admin_id = (int)$_SESSION['user_id'];
 
 $success = '';
 $error = '';
@@ -27,9 +25,6 @@ function e($value) {
 |--------------------------------------------------------------------------
 | ANNOUNCEMENT NOTIFICATION HELPER
 |--------------------------------------------------------------------------
-| Sends a notification to approved residents when an announcement
-| becomes published. Prevents duplicate notification records per resident.
-|--------------------------------------------------------------------------
 */
 function notifyResidentsOfAnnouncement(
     PDO $pdo,
@@ -40,7 +35,6 @@ function notifyResidentsOfAnnouncement(
 
     try {
 
-        // Retrieve approved resident accounts.
         $stmt = $pdo->prepare("
             SELECT user_id
             FROM users
@@ -52,6 +46,7 @@ function notifyResidentsOfAnnouncement(
         $residents = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         $notification_title = 'New Barangay Announcement';
+
         $notification_message =
             'New announcement: ' . $title . '. ' .
             mb_substr(strip_tags($content), 0, 250);
@@ -60,7 +55,6 @@ function notifyResidentsOfAnnouncement(
 
             $resident_user_id = (int)$resident_user_id;
 
-            // Prevent duplicate notifications for this announcement.
             $check = $pdo->prepare("
                 SELECT notification_id
                 FROM notifications
@@ -178,6 +172,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $announcement_id = (int)$pdo->lastInsertId();
 
+                    /* AUDIT LOG: CREATE */
+                    logAudit(
+                        $pdo,
+                        'CREATE ANNOUNCEMENT',
+                        'Announcements',
+                        'Administrator created announcement: ' .
+                        $title . ' (ID: ' . $announcement_id .
+                        '). Status: ' . $status,
+                        $admin_id,
+                        $_SESSION['role'] ?? 'admin'
+                    );
+
                     /*
                      * Notify residents only if the announcement
                      * is published and its publication date has arrived.
@@ -186,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $status === 'published' &&
                         (
                             $publish_date === null ||
-                            strtotime($publish_date) <= (time() + 60)
+                            strtotime($publish_date) <= time()
                         ) &&
                         (
                             $expiry_date === null ||
@@ -254,21 +260,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 try {
 
-                    // Retrieve the existing announcement status.
+                    /* Retrieve the existing announcement */
                     $old_stmt = $pdo->prepare("
-                        SELECT status
+                        SELECT title, status
                         FROM announcements
                         WHERE announcement_id = ?
                     ");
 
                     $old_stmt->execute([$announcement_id]);
-                    $old_status = $old_stmt->fetchColumn();
+                    $old_announcement = $old_stmt->fetch(PDO::FETCH_ASSOC);
 
-                    if ($old_status === false) {
+                    if (!$old_announcement) {
 
                         $error = 'Announcement not found.';
 
                     } else {
+
+                        $old_status = $old_announcement['status'];
+                        $old_title = $old_announcement['title'];
 
                         $stmt = $pdo->prepare("
                             UPDATE announcements
@@ -291,6 +300,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $expiry_date,
                             $announcement_id
                         ]);
+
+                        /* AUDIT LOG: UPDATE */
+                        logAudit(
+                            $pdo,
+                            'UPDATE ANNOUNCEMENT',
+                            'Announcements',
+                            'Administrator updated announcement: ' .
+                            $title . ' (ID: ' . $announcement_id . '). ' .
+                            'Previous title: ' . $old_title .
+                            '. Previous status: ' . $old_status .
+                            '. New status: ' . $status,
+                            $admin_id,
+                            $_SESSION['role'] ?? 'admin'
+                        );
 
                         /*
                          * Notify only when the announcement transitions
@@ -348,7 +371,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $pdo->beginTransaction();
 
-                    // Remove announcement read records first.
+                    /* Retrieve details before deleting */
+                    $details_stmt = $pdo->prepare("
+                        SELECT title, status
+                        FROM announcements
+                        WHERE announcement_id = ?
+                    ");
+
+                    $details_stmt->execute([$announcement_id]);
+                    $announcement_details = $details_stmt->fetch(PDO::FETCH_ASSOC);
+
+                    if (!$announcement_details) {
+                        throw new Exception('Announcement not found.');
+                    }
+
+                    /* Remove announcement read records */
                     $stmt = $pdo->prepare("
                         DELETE FROM announcement_reads
                         WHERE announcement_id = ?
@@ -356,7 +393,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $stmt->execute([$announcement_id]);
 
-                    // Delete announcement.
+                    /* Delete announcement */
                     $stmt = $pdo->prepare("
                         DELETE FROM announcements
                         WHERE announcement_id = ?
@@ -366,10 +403,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $pdo->commit();
 
+                    /* AUDIT LOG: DELETE */
+                    logAudit(
+                        $pdo,
+                        'DELETE ANNOUNCEMENT',
+                        'Announcements',
+                        'Administrator deleted announcement: ' .
+                        $announcement_details['title'] .
+                        ' (ID: ' . $announcement_id . '). Previous status: ' .
+                        $announcement_details['status'],
+                        $admin_id,
+                        $_SESSION['role'] ?? 'admin'
+                    );
+
                     header('Location: announcements.php?success=deleted');
                     exit;
 
-                } catch (PDOException $ex) {
+                } catch (Throwable $ex) {
 
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
@@ -404,7 +454,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 try {
 
-                    // Retrieve current status and publication details.
+                    /* Retrieve current announcement */
                     $old_stmt = $pdo->prepare("
                         SELECT
                             status,
@@ -425,6 +475,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     } else {
 
+                        $old_status = $announcement['status'];
+
                         $stmt = $pdo->prepare("
                             UPDATE announcements
                             SET status = ?
@@ -436,12 +488,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $announcement_id
                         ]);
 
+                        /* AUDIT LOG: STATUS UPDATE */
+                        logAudit(
+                            $pdo,
+                            'UPDATE ANNOUNCEMENT STATUS',
+                            'Announcements',
+                            'Administrator changed announcement status for "' .
+                            $announcement['title'] .
+                            '" (ID: ' . $announcement_id . ') from ' .
+                            $old_status . ' to ' . $status . '.',
+                            $admin_id,
+                            $_SESSION['role'] ?? 'admin'
+                        );
+
                         /*
                          * Notify only when quick status changes
                          * a non-published announcement to published.
                          */
                         if (
-                            $announcement['status'] !== 'published' &&
+                            $old_status !== 'published' &&
                             $status === 'published' &&
                             (
                                 empty($announcement['publish_date']) ||
@@ -557,9 +622,11 @@ $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
           rel="stylesheet">
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
-    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet"
+          href="../assets/css/style.css">
 
 </head>
 
@@ -605,7 +672,6 @@ $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="row">
 
         <!-- SIDEBAR -->
-         <!-- Sidebar -->
         <aside class="col-md-3 col-lg-2 admin-sidebar p-3">
 
             <small class="text-muted text-uppercase fw-bold">
@@ -664,8 +730,9 @@ $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <i class="bi bi-file-earmark-bar-graph me-2"></i>Reports
                 </a>
 
-                <a href="audit-trail.php" class="nav-link admin-nav-link">
-                    <i class="bi bi-shield-check me-2"></i> Audit Trail
+                <a class="nav-link admin-nav-link"
+                   href="audit-trail.php">
+                    <i class="bi bi-shield-check me-2"></i>Audit Trail
                 </a>
 
                 <a class="nav-link admin-nav-link"
@@ -843,14 +910,12 @@ $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <thead>
 
                                     <tr>
-
                                         <th>Title</th>
                                         <th>Category</th>
                                         <th>Status</th>
                                         <th>Publication Date</th>
                                         <th>Expiration</th>
                                         <th>Actions</th>
-
                                     </tr>
 
                                 </thead>
@@ -860,14 +925,12 @@ $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <?php foreach ($announcements as $announcement): ?>
 
                                     <?php
-
                                     $statusClass = match($announcement['status']) {
                                         'published' => 'success',
                                         'draft' => 'secondary',
                                         'archived' => 'dark',
                                         default => 'secondary'
                                     };
-
                                     ?>
 
                                     <tr>
@@ -889,12 +952,10 @@ $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         </td>
 
                                         <td>
-
                                             <?= e(
                                                 $announcement['category']
                                                 ?: 'Uncategorized'
                                             ) ?>
-
                                         </td>
 
                                         <td>
@@ -937,7 +998,6 @@ $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <button
                                                     type="button"
                                                     class="btn btn-outline-primary btn-sm edit-btn"
-
                                                     data-id="<?= (int)$announcement['announcement_id'] ?>"
                                                     data-title="<?= e($announcement['title']) ?>"
                                                     data-content="<?= e($announcement['content']) ?>"
@@ -986,7 +1046,6 @@ $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <button
                                                     type="button"
                                                     class="btn btn-outline-danger btn-sm delete-btn"
-
                                                     data-id="<?= (int)$announcement['announcement_id'] ?>"
                                                     data-title="<?= e($announcement['title']) ?>">
 

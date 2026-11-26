@@ -4,6 +4,45 @@ require_once '../includes/audit_helper.php';
 require_once '../includes/notification_helper.php';
 
 /* =========================================================
+   AUDIT TRAIL - REPORTS
+========================================================= */
+
+$hasReportFilter = isset($_GET['start_date']) || isset($_GET['end_date']);
+
+if ($hasReportFilter) {
+    logAudit(
+        $pdo,
+        'GENERATE REPORT',
+        'Reports',
+        'Admin generated a report using date filters. Start Date: '
+        . ($_GET['start_date'] ?? 'None')
+        . ', End Date: '
+        . ($_GET['end_date'] ?? 'None')
+    );
+} else {
+    logAudit(
+        $pdo,
+        'VIEW REPORTS',
+        'Reports',
+        'Admin viewed the Reports dashboard.'
+    );
+}
+
+/* =========================================================
+   AUDIT TRAIL - PRINT / EXPORT
+========================================================= */
+
+if (isset($_GET['print_report']) && $_GET['print_report'] === '1') {
+
+    logAudit(
+        $pdo,
+        'EXPORT REPORT',
+        'Reports',
+        'Admin printed or exported the barangay report.'
+    );
+}
+
+/* =========================================================
    HELPERS
 ========================================================= */
 function reports_escape($value) {
@@ -823,7 +862,7 @@ if ($start_date && $end_date) {
 
                 <button type="button"
                         class="btn btn-yellow"
-                        onclick="window.print()">
+                        onclick="printReport()">
                     <i class="bi bi-printer me-1"></i>Print
                 </button>
 
@@ -1376,6 +1415,35 @@ if ($start_date && $end_date) {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function printReport() {
+
+    const startDate = document.querySelector('input[name="start_date"]')?.value || '';
+    const endDate = document.querySelector('input[name="end_date"]')?.value || '';
+
+    const params = new URLSearchParams();
+
+    if (startDate) {
+        params.append('start_date', startDate);
+    }
+
+    if (endDate) {
+        params.append('end_date', endDate);
+    }
+
+    params.append('print_report', '1');
+
+    window.location.href = 'reports.php?' + params.toString();
+}
+</script>
+
+<?php if (isset($_GET['print_report']) && $_GET['print_report'] === '1'): ?>
+<script>
+window.addEventListener('load', function() {
+    window.print();
+});
+</script>
+<?php endif; ?>
 
 </body>
 </html>

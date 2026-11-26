@@ -318,6 +318,7 @@ $query_params = array_filter(
         <!-- SIDEBAR -->
         <!-- ============================== -->
 
+        <!-- SIDEBAR -->
         <aside class="col-md-3 col-lg-2 admin-sidebar p-3">
 
             <small class="text-muted text-uppercase fw-bold">
@@ -326,102 +327,65 @@ $query_params = array_filter(
 
             <nav class="nav flex-column gap-2 mt-3">
 
-
-                <a href="dashboard.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-grid me-2"></i>
-                    Dashboard
-
+                <a class="nav-link admin-nav-link"
+                   href="dashboard.php">
+                    <i class="bi bi-grid me-2"></i>Dashboard
                 </a>
 
-
-                <a href="residents.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-people me-2"></i>
-                    Resident Approvals
-
+                <a class="nav-link admin-nav-link"
+                   href="residents.php">
+                    <i class="bi bi-people me-2"></i>Resident Approvals
                 </a>
 
-
-                <a href="users.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-person-gear me-2"></i>
-                    User Management
-
+                <a class="nav-link admin-nav-link"
+                   href="users.php">
+                    <i class="bi bi-person-gear me-2"></i>User Management
                 </a>
 
-
-                <a href="staff.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-person-badge me-2"></i>
-                    Staff Management
-
+                <a class="nav-link admin-nav-link"
+                   href="staff.php">
+                    <i class="bi bi-person-badge me-2"></i>Staff Management
                 </a>
 
-
-                <a href="service-types.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-list-check me-2"></i>
-                    Service Types
-
+                <a class="nav-link admin-nav-link"
+                   href="service-types.php">
+                    <i class="bi bi-list-check me-2"></i>Service Types
                 </a>
 
-
-                <a href="service-requests.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-card-checklist me-2"></i>
-                    Service Requests
-
+                <a class="nav-link admin-nav-link"
+                   href="service-requests.php">
+                    <i class="bi bi-card-checklist me-2"></i>Service Requests
                 </a>
 
-
-                <a href="announcements.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-megaphone me-2"></i>
-                    Announcements
-
+                <a class="nav-link admin-nav-link"
+                   href="announcements.php">
+                    <i class="bi bi-megaphone me-2"></i>Announcements
                 </a>
 
-
-                <a href="feedback.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-chat-left-text me-2"></i>
-                    Complaints & Feedback
-
+                <a class="nav-link admin-nav-link"
+                   href="feedback.php">
+                    <i class="bi bi-chat-left-text me-2"></i>Complaints & Feedback
                 </a>
 
-
-                <a href="analytics.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-bar-chart me-2"></i>
-                    Feedback Analytics
-
+                <a class="nav-link admin-nav-link"
+                   href="analytics.php">
+                    <i class="bi bi-bar-chart me-2"></i>Feedback Analytics
                 </a>
 
-
-                <a href="reports.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-file-earmark-bar-graph me-2"></i>
-                    Reports
-
+                <a class="nav-link admin-nav-link"
+                   href="reports.php">
+                    <i class="bi bi-file-earmark-bar-graph me-2"></i>Reports
                 </a>
 
-
-                <a href="audit-trail.php" class="nav-link admin-nav-link active">
-
-                    <i class="bi bi-shield-check me-2"></i>
-                    Audit Trail
-
+                <a class="nav-link admin-nav-link active"
+                   href="audit-trail.php">
+                    <i class="bi bi-shield-check me-2"></i>Audit Trail
                 </a>
 
-
-                <a href="settings.php" class="nav-link admin-nav-link">
-
-                    <i class="bi bi-gear me-2"></i>
-                    Settings
-
+                <a class="nav-link admin-nav-link"
+                   href="settings.php">
+                    <i class="bi bi-gear me-2"></i>Settings
                 </a>
-
 
             </nav>
 

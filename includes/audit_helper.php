@@ -1,9 +1,12 @@
-
 <?php
 
 /**
  * Audit Trail Helper
  * Barangay Putatan E-Governance System
+ *
+ * Compatible with the actual audit_logs table:
+ * log_id, user_id, action, module, description,
+ * ip_address, created_at
  */
 
 if (!function_exists('logAudit')) {
@@ -19,30 +22,24 @@ if (!function_exists('logAudit')) {
 
         try {
 
-            // Use session details if user ID was not explicitly provided
+            // Use session user ID if none was explicitly provided
             if ($user_id === null && isset($_SESSION['user_id'])) {
-                $user_id = (int) $_SESSION['user_id'];
+                $user_id = (int)$_SESSION['user_id'];
             }
 
-            // Use session role if role was not explicitly provided
-            if ($user_role === null && isset($_SESSION['role'])) {
-                $user_role = (string) $_SESSION['role'];
+            // Prevent invalid user IDs
+            if ($user_id !== null && $user_id <= 0) {
+                $user_id = null;
             }
 
-            // Fallback role for system-generated activities
-            if (empty($user_role)) {
-                $user_role = 'system';
-            }
-
-            // Capture IP address
+            // Capture visitor IP address
             $ip_address = $_SERVER['REMOTE_ADDR'] ?? null;
 
-            // Prepare SQL statement
+            // Insert using the actual database columns
             $stmt = $pdo->prepare("
                 INSERT INTO audit_logs
                 (
                     user_id,
-                    user_role,
                     action,
                     module,
                     description,
@@ -51,7 +48,6 @@ if (!function_exists('logAudit')) {
                 VALUES
                 (
                     :user_id,
-                    :user_role,
                     :action,
                     :module,
                     :description,
@@ -61,9 +57,8 @@ if (!function_exists('logAudit')) {
 
             $stmt->execute([
                 ':user_id'     => $user_id,
-                ':user_role'   => $user_role,
                 ':action'      => $action,
-                ':module'       => $module,
+                ':module'      => $module,
                 ':description'  => $description,
                 ':ip_address'  => $ip_address
             ]);
@@ -72,8 +67,11 @@ if (!function_exists('logAudit')) {
 
         } catch (Throwable $e) {
 
-            // Audit failures should not crash the main system
-            error_log("Audit log error: " . $e->getMessage());
+            // Record the error for troubleshooting
+            error_log(
+                '[Barangay Putatan Audit Error] ' .
+                $e->getMessage()
+            );
 
             return false;
         }

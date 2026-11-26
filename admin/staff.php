@@ -133,6 +133,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $pdo->commit();
 
+                    logAudit(
+                        $pdo,
+                        'CREATE STAFF',
+                        'Staff Management',
+                        'Administrator created staff account: ' . $full_name . ' (User ID: ' . (int)$new_user_id . ')',
+                        (int)$_SESSION['user_id'],
+                        $_SESSION['role'] ?? 'admin'
+                    );
+
                     $message = "Staff account created successfully.";
                     $message_type = "success";
 
@@ -241,6 +250,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $pdo->commit();
 
+                    logAudit(
+                        $pdo,
+                        'UPDATE STAFF',
+                        'Staff Management',
+                        'Administrator updated staff information for: ' . $full_name . ' (User ID: ' . (int)$user_id . ')',
+                        (int)$_SESSION['user_id'],
+                        $_SESSION['role'] ?? 'admin'
+                    );
+
                     $message = "Staff information updated successfully.";
                     $message_type = "success";
 
@@ -272,6 +290,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } else {
 
+            // Retrieve staff name for the audit description
+            $name_stmt = $pdo->prepare("
+                SELECT full_name
+                FROM users
+                WHERE user_id = :user_id AND role = 'staff'
+                LIMIT 1
+            ");
+            $name_stmt->execute([':user_id' => $user_id]);
+            $staff_name = $name_stmt->fetchColumn();
+
             $stmt = $pdo->prepare("
                 UPDATE users
                 SET account_status = :status
@@ -290,6 +318,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : "Staff account reactivated.";
 
                 $message_type = "success";
+
+                $audit_action = $new_status === 'suspended'
+                    ? 'SUSPEND STAFF'
+                    : 'REACTIVATE STAFF';
+
+                logAudit(
+                    $pdo,
+                    $audit_action,
+                    'Staff Management',
+                    'Administrator ' . ($new_status === 'suspended' ? 'suspended' : 'reactivated') .
+                    ' staff account: ' . ($staff_name ?: 'Unknown Staff') . ' (User ID: ' . (int)$user_id . ')',
+                    (int)$_SESSION['user_id'],
+                    $_SESSION['role'] ?? 'admin'
+                );
             } else {
                 $message = "No changes were made.";
             }

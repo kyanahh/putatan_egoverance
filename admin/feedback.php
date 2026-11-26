@@ -1,4 +1,3 @@
-
 <?php
 require_once '../includes/admin_auth.php';
 require_once '../includes/audit_helper.php';
@@ -95,6 +94,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 try {
 
+                    // Retrieve the existing feedback details before updating.
+                    $stmt = $pdo->prepare("
+                        SELECT reference_number, subject, status
+                        FROM citizen_feedback
+                        WHERE feedback_id = ?
+                    ");
+
+                    $stmt->execute([$feedback_id]);
+                    $feedbackRecord = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                    if (!$feedbackRecord) {
+                        throw new Exception('Feedback not found.');
+                    }
+
+                    $old_status = $feedbackRecord['status'];
+
                     $resolved_at = ($status === 'resolved')
                         ? date('Y-m-d H:i:s')
                         : null;
@@ -112,11 +127,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $feedback_id
                     ]);
 
+                    // Record only actual status changes in the audit trail.
+                    if ($old_status !== $status) {
+
+                        logAudit(
+                            $pdo,
+                            'UPDATE FEEDBACK STATUS',
+                            'Complaints & Feedback',
+                            'Updated feedback ' .
+                            $feedbackRecord['reference_number'] .
+                            ' (' . $feedbackRecord['subject'] .
+                            ') status from ' .
+                            feedbackStatusLabel($old_status) .
+                            ' to ' .
+                            feedbackStatusLabel($status) . '.',
+                            $admin_id
+                        );
+                    }
+
                     header('Location: feedback.php?success=status');
                     exit;
 
                 } catch (PDOException $ex) {
+
                     $error = 'Unable to update feedback status.';
+
                 }
             }
         }
@@ -187,6 +222,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // Commit response and status update
                     $pdo->commit();
+
+                    // Log the official response in the audit trail.
+                    logAudit(
+                        $pdo,
+                        'SEND FEEDBACK RESPONSE',
+                        'Complaints & Feedback',
+                        'Sent an official response to feedback ' .
+                        $feedbackRecord['reference_number'] .
+                        ' (' . $feedbackRecord['subject'] . ').',
+                        $admin_id
+                    );
 
                     // Notify feedback submitter
                     $resident_user_id = (int) (
@@ -427,7 +473,7 @@ foreach ($response_rows as $response) {
                 </a>
 
                 <a href="audit-trail.php" class="nav-link admin-nav-link">
-                    <i class="bi bi-shield-check me-2"></i> Audit Trail
+                    <i class="bi bi-shield-check me-2"></i>Audit Trail
                 </a>
 
                 <a class="nav-link admin-nav-link"
@@ -454,7 +500,7 @@ foreach ($response_rows as $response) {
 
             </div>
 
-            <!-- ALERTS -->
+                        <!-- ALERTS -->
             <?php if ($success): ?>
 
                 <div class="alert alert-success alert-dismissible fade show">

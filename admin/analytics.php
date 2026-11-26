@@ -1,12 +1,26 @@
-
 <?php
 require_once '../includes/admin_auth.php';
 require_once '../includes/audit_helper.php';
 require_once '../includes/notification_helper.php';
 
+/* =========================
+   HELPER FUNCTION
+========================= */
+
 function e($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
+
+/* =========================
+   AUDIT TRAIL
+========================= */
+
+logAudit(
+    $pdo,
+    'VIEW FEEDBACK ANALYTICS',
+    'Feedback Analytics',
+    'Admin viewed the feedback analytics dashboard.'
+);
 
 /* =========================
    SUMMARY STATISTICS
@@ -192,7 +206,6 @@ if ($totalFeedback === 0) {
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -284,7 +297,6 @@ if ($totalFeedback === 0) {
             }
         }
     </style>
-
 </head>
 
 <body class="admin-page">
@@ -388,7 +400,7 @@ if ($totalFeedback === 0) {
                 </a>
 
                 <a href="audit-trail.php" class="nav-link admin-nav-link">
-                    <i class="bi bi-shield-check me-2"></i> Audit Trail
+                    <i class="bi bi-shield-check me-2"></i>Audit Trail
                 </a>
 
                 <a class="nav-link admin-nav-link"

@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Ensure the account is a pending resident
         $check = $pdo->prepare("
-            SELECT user_id, proof_of_residency
+            SELECT user_id, full_name, username, proof_of_residency
             FROM users
             WHERE user_id = :user_id
               AND role = 'resident'
@@ -77,6 +77,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $user_id
                         );
 
+                        // RECORD APPROVAL IN AUDIT TRAIL
+                        logAudit(
+                            $pdo,
+                            'APPROVE RESIDENT',
+                            'Resident Approvals',
+                            'Administrator approved resident registration: ' . $pending_user['full_name'] . ' (User ID: ' . $user_id . ')',
+                            (int)$_SESSION['user_id'],
+                            $_SESSION['role'] ?? 'admin'
+                        );
+
                         $message = "Resident account approved successfully.";
 
                     } else {
@@ -120,6 +130,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'Your Barangay Putatan registration has been rejected. Reason: ' . $rejection_reason,
                             'account_rejection',
                             $user_id
+                        );
+
+                        // RECORD REJECTION IN AUDIT TRAIL
+                        logAudit(
+                            $pdo,
+                            'REJECT RESIDENT',
+                            'Resident Approvals',
+                            'Administrator rejected resident registration: ' . $pending_user['full_name'] . ' (User ID: ' . $user_id . '). Reason: ' . $rejection_reason,
+                            (int)$_SESSION['user_id'],
+                            $_SESSION['role'] ?? 'admin'
                         );
 
                         $message = "Resident registration rejected.";

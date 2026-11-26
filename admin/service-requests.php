@@ -1,10 +1,11 @@
-
 <?php
 require_once '../includes/admin_auth.php';
 require_once '../includes/audit_helper.php';
 require_once '../includes/notification_helper.php';
 
-// Status configuration
+/* =========================================================
+   STATUS CONFIGURATION
+========================================================= */
 $allowedStatuses = [
     'submitted',
     'under_review',
@@ -38,40 +39,51 @@ $statusColors = [
 $message = '';
 $messageType = 'success';
 
-// CSRF token
+/* =========================================================
+   CSRF TOKEN
+========================================================= */
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-// Handle status update
+/* =========================================================
+   HANDLE SERVICE REQUEST STATUS UPDATE
+========================================================= */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_request'])) {
 
     if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
+
         $message = 'Invalid form submission. Please try again.';
         $messageType = 'danger';
+
     } else {
 
-        $request_id = (int) ($_POST['request_id'] ?? 0);
+        $request_id = (int)($_POST['request_id'] ?? 0);
         $new_status = $_POST['new_status'] ?? '';
         $remarks = trim($_POST['remarks'] ?? '');
-        $user_id = (int) $_SESSION['user_id'];
+        $user_id = (int)$_SESSION['user_id'];
 
         if (!in_array($new_status, $allowedStatuses, true)) {
+
             $message = 'Invalid request status.';
             $messageType = 'danger';
 
         } elseif ($request_id <= 0) {
+
             $message = 'Invalid service request.';
             $messageType = 'danger';
 
         } else {
 
             try {
+
                 $pdo->beginTransaction();
 
-                // Lock request and retrieve resident information
+                /* -----------------------------------------
+                   GET REQUEST DETAILS AND LOCK RECORD
+                ----------------------------------------- */
                 $stmt = $pdo->prepare("
-                    SELECT 
+                    SELECT
                         sr.request_id,
                         sr.status,
                         sr.reference_number,
@@ -94,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_request'])) {
                 }
 
                 $previous_status = $currentRequest['status'];
-                $resident_user_id = (int) $currentRequest['resident_user_id'];
+                $resident_user_id = (int)$currentRequest['resident_user_id'];
                 $reference_number = $currentRequest['reference_number'];
                 $service_name = $currentRequest['service_name'];
 
@@ -102,7 +114,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_request'])) {
                     throw new Exception('The request already has this status.');
                 }
 
-                // Update request
+                /* -----------------------------------------
+                   UPDATE SERVICE REQUEST
+                ----------------------------------------- */
                 $stmt = $pdo->prepare("
                     UPDATE service_requests
                     SET status = ?,
@@ -123,7 +137,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_request'])) {
                     $request_id
                 ]);
 
-                // Save status history
+                /* -----------------------------------------
+                   SAVE REQUEST STATUS HISTORY
+                ----------------------------------------- */
                 $stmt = $pdo->prepare("
                     INSERT INTO request_status_history
                     (
@@ -144,11 +160,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_request'])) {
                     $user_id
                 ]);
 
-                // Commit request update and history
+                /* -----------------------------------------
+                   COMMIT REQUEST UPDATE AND HISTORY
+                ----------------------------------------- */
                 $pdo->commit();
 
-                // Create resident notification AFTER successful commit
-                $statusLabel = $statusLabels[$new_status] ?? ucfirst($new_status);
+                /* -----------------------------------------
+                   AUDIT TRAIL
+                   LOG ONLY AFTER SUCCESSFUL COMMIT
+                ----------------------------------------- */
+                $previousStatusLabel = $statusLabels[$previous_status]
+                    ?? ucfirst($previous_status);
+
+                $newStatusLabel = $statusLabels[$new_status]
+                    ?? ucfirst($new_status);
+
+                $auditDescription =
+                    'Administrator updated service request ' .
+                    $reference_number .
+                    ' for ' . $service_name .
+                    ' from ' . $previousStatusLabel .
+                    ' to ' . $newStatusLabel . '.';
+
+                if ($remarks !== '') {
+                    $auditDescription .= ' Remarks: ' . $remarks;
+                }
+
+                logAudit(
+                    $pdo,
+                    'UPDATE SERVICE REQUEST STATUS',
+                    'Service Requests',
+                    $auditDescription,
+                    $user_id,
+                    $_SESSION['role'] ?? 'admin'
+                );
+
+                /* -----------------------------------------
+                   CREATE RESIDENT NOTIFICATION
+                ----------------------------------------- */
+                $statusLabel = $statusLabels[$new_status]
+                    ?? ucfirst($new_status);
 
                 $notificationMessage =
                     "Your service request ({$reference_number}) for {$service_name} " .
@@ -183,7 +234,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_request'])) {
     }
 }
 
-// Search and filter
+/* =========================================================
+   SEARCH AND FILTER
+========================================================= */
 $search = trim($_GET['search'] ?? '');
 $filter_status = $_GET['status'] ?? '';
 
@@ -217,6 +270,7 @@ $sql = "
 $params = [];
 
 if ($search !== '') {
+
     $sql .= "
         AND (
             sr.reference_number LIKE ?
@@ -249,8 +303,11 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Resident name helper
-function getResidentName($request) {
+/* =========================================================
+   RESIDENT NAME HELPER
+========================================================= */
+function getResidentName($request)
+{
     return trim(
         $request['first_name'] . ' ' .
         ($request['middle_name'] ? $request['middle_name'] . ' ' : '') .
@@ -259,8 +316,11 @@ function getResidentName($request) {
     );
 }
 
-// Status badge helper
-function getStatusBadge($status, $statusColors, $statusLabels) {
+/* =========================================================
+   STATUS BADGE HELPER
+========================================================= */
+function getStatusBadge($status, $statusColors, $statusLabels)
+{
     $color = $statusColors[$status] ?? 'secondary';
     $label = $statusLabels[$status] ?? ucfirst($status);
 
@@ -273,6 +333,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -280,11 +341,12 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
           rel="stylesheet">
-    
+
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
-    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet"
+          href="../assets/css/style.css">
 
     <style>
         .request-table th {
@@ -305,11 +367,14 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
             filter: invert(1);
         }
     </style>
+
 </head>
 
 <body class="admin-page">
 
-<!-- NAVBAR -->
+<!-- =====================================================
+     NAVBAR: SAME AS DASHBOARD
+===================================================== -->
 <nav class="navbar navbar-dark barangay-navbar">
     <div class="container-fluid px-4">
 
@@ -320,7 +385,10 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                  alt="Barangay Logo"
                  class="navbar-logo">
 
-            <span class="fw-bold">Barangay Putatan | Admin</span>
+            <span class="fw-bold">
+                Barangay Putatan | Admin
+            </span>
+
         </a>
 
         <div class="d-flex align-items-center gap-3">
@@ -329,7 +397,8 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                 <?= htmlspecialchars($_SESSION['full_name'], ENT_QUOTES, 'UTF-8') ?>
             </span>
 
-            <a href="../logout.php" class="btn btn-yellow btn-sm">
+            <a href="../logout.php"
+               class="btn btn-yellow btn-sm">
                 Logout
             </a>
 
@@ -338,11 +407,13 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
     </div>
 </nav>
 
+<!-- =====================================================
+     MAIN LAYOUT
+===================================================== -->
 <div class="container-fluid">
     <div class="row">
 
         <!-- SIDEBAR -->
-        <!-- Sidebar -->
         <aside class="col-md-3 col-lg-2 admin-sidebar p-3">
 
             <small class="text-muted text-uppercase fw-bold">
@@ -401,8 +472,9 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                     <i class="bi bi-file-earmark-bar-graph me-2"></i>Reports
                 </a>
 
-                <a href="audit-trail.php" class="nav-link admin-nav-link">
-                    <i class="bi bi-shield-check me-2"></i> Audit Trail
+                <a href="audit-trail.php"
+                   class="nav-link admin-nav-link">
+                    <i class="bi bi-shield-check me-2"></i>Audit Trail
                 </a>
 
                 <a class="nav-link admin-nav-link"
@@ -417,6 +489,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
         <!-- MAIN CONTENT -->
         <main class="col-md-9 col-lg-10 px-4 py-4">
 
+            <!-- PAGE HEADER -->
             <div class="mb-4">
 
                 <h2 class="fw-bold text-primary-custom">
@@ -432,13 +505,14 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
             <!-- ALERT -->
             <?php if ($message !== ''): ?>
 
-                <div class="alert alert-<?= htmlspecialchars($messageType) ?> alert-dismissible fade show">
+                <div class="alert alert-<?= htmlspecialchars($messageType, ENT_QUOTES, 'UTF-8') ?> alert-dismissible fade show">
 
                     <?= htmlspecialchars($message, ENT_QUOTES, 'UTF-8') ?>
 
                     <button type="button"
                             class="btn-close"
-                            data-bs-dismiss="alert">
+                            data-bs-dismiss="alert"
+                            aria-label="Close">
                     </button>
 
                 </div>
@@ -447,6 +521,15 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 
             <!-- SEARCH AND FILTER -->
             <div class="card border-0 shadow-sm mb-4">
+
+                <div class="card-header bg-white py-3">
+
+                    <h5 class="mb-0 fw-bold text-primary-custom">
+                        <i class="bi bi-funnel me-2"></i>
+                        Search and Filter Requests
+                    </h5>
+
+                </div>
 
                 <div class="card-body">
 
@@ -474,7 +557,8 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                                 Status
                             </label>
 
-                            <select name="status" class="form-select">
+                            <select name="status"
+                                    class="form-select">
 
                                 <option value="">
                                     All Statuses
@@ -483,10 +567,10 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                                 <?php foreach ($allowedStatuses as $status): ?>
 
                                     <option
-                                        value="<?= htmlspecialchars($status) ?>"
+                                        value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>"
                                         <?= $filter_status === $status ? 'selected' : '' ?>
                                     >
-                                        <?= htmlspecialchars($statusLabels[$status]) ?>
+                                        <?= htmlspecialchars($statusLabels[$status], ENT_QUOTES, 'UTF-8') ?>
                                     </option>
 
                                 <?php endforeach; ?>
@@ -495,16 +579,33 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 
                         </div>
 
-                        <div class="col-lg-2 d-flex align-items-end">
+                        <div class="col-lg-2 d-flex align-items-end gap-2">
 
                             <button type="submit"
                                     class="btn btn-primary-custom w-100">
+
+                                <i class="bi bi-search me-1"></i>
                                 Search
+
                             </button>
 
                         </div>
 
                     </form>
+
+                    <?php if ($search !== '' || $filter_status !== ''): ?>
+
+                        <div class="mt-3">
+                            <a href="service-requests.php"
+                               class="btn btn-outline-secondary btn-sm">
+
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>
+                                Reset Filters
+
+                            </a>
+                        </div>
+
+                    <?php endif; ?>
 
                 </div>
 
@@ -516,6 +617,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                 <div class="card-header bg-white py-3">
 
                     <h5 class="mb-0 fw-bold text-primary-custom">
+                        <i class="bi bi-card-checklist me-2"></i>
                         Submitted Service Requests
                     </h5>
 
@@ -526,6 +628,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                     <?php if (empty($requests)): ?>
 
                         <div class="alert alert-light mb-0">
+                            <i class="bi bi-inbox me-2"></i>
                             No service requests found.
                         </div>
 
@@ -548,55 +651,57 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 
                                 <tbody>
 
-                                <?php foreach ($requests as $request): ?>
+                                    <?php foreach ($requests as $request): ?>
 
-                                    <tr>
+                                        <tr>
 
-                                        <td>
-                                            <strong>
-                                                <?= htmlspecialchars($request['reference_number'], ENT_QUOTES, 'UTF-8') ?>
-                                            </strong>
-                                        </td>
+                                            <td>
+                                                <strong>
+                                                    <?= htmlspecialchars($request['reference_number'], ENT_QUOTES, 'UTF-8') ?>
+                                                </strong>
+                                            </td>
 
-                                        <td>
-                                            <?= htmlspecialchars(getResidentName($request), ENT_QUOTES, 'UTF-8') ?>
-                                        </td>
+                                            <td>
+                                                <?= htmlspecialchars(getResidentName($request), ENT_QUOTES, 'UTF-8') ?>
+                                            </td>
 
-                                        <td>
-                                            <?= htmlspecialchars($request['service_name'], ENT_QUOTES, 'UTF-8') ?>
-                                        </td>
+                                            <td>
+                                                <?= htmlspecialchars($request['service_name'], ENT_QUOTES, 'UTF-8') ?>
+                                            </td>
 
-                                        <td>
-                                            <?= date(
-                                                'M d, Y h:i A',
-                                                strtotime($request['requested_at'])
-                                            ) ?>
-                                        </td>
+                                            <td>
+                                                <?= date(
+                                                    'M d, Y h:i A',
+                                                    strtotime($request['requested_at'])
+                                                ) ?>
+                                            </td>
 
-                                        <td>
-                                            <?= getStatusBadge(
-                                                $request['status'],
-                                                $statusColors,
-                                                $statusLabels
-                                            ) ?>
-                                        </td>
+                                            <td>
+                                                <?= getStatusBadge(
+                                                    $request['status'],
+                                                    $statusColors,
+                                                    $statusLabels
+                                                ) ?>
+                                            </td>
 
-                                        <td>
+                                            <td>
 
-                                            <button
-                                                type="button"
-                                                class="btn btn-primary-custom btn-sm"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#requestModal<?= (int)$request['request_id'] ?>"
-                                            >
-                                                View / Update
-                                            </button>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-primary-custom btn-sm"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#requestModal<?= (int)$request['request_id'] ?>">
 
-                                        </td>
+                                                    <i class="bi bi-eye me-1"></i>
+                                                    View / Update
 
-                                    </tr>
+                                                </button>
 
-                                <?php endforeach; ?>
+                                            </td>
+
+                                        </tr>
+
+                                    <?php endforeach; ?>
 
                                 </tbody>
 
@@ -615,7 +720,9 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
     </div>
 </div>
 
-<!-- REQUEST MODALS -->
+<!-- =====================================================
+     REQUEST MODALS
+===================================================== -->
 <?php foreach ($requests as $request): ?>
 
 <div class="modal fade"
@@ -629,19 +736,22 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 
             <div class="modal-header">
 
-                <h5 class="modal-title">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-card-checklist me-2"></i>
                     Service Request Details
                 </h5>
 
                 <button type="button"
                         class="btn-close"
-                        data-bs-dismiss="modal">
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
                 </button>
 
             </div>
 
             <div class="modal-body">
 
+                <!-- REQUEST INFORMATION -->
                 <div class="row g-3 mb-3">
 
                     <div class="col-md-6">
@@ -697,6 +807,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 
                 </div>
 
+                <!-- CURRENT STATUS -->
                 <div class="mb-3">
 
                     <label class="fw-bold">
@@ -713,6 +824,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 
                 </div>
 
+                <!-- PURPOSE -->
                 <div class="mb-3">
 
                     <label class="fw-bold">
@@ -725,6 +837,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 
                 </div>
 
+                <!-- ADDITIONAL DETAILS -->
                 <div class="mb-3">
 
                     <label class="fw-bold">
@@ -743,7 +856,9 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
 
                 <hr>
 
-                <h5 class="fw-bold text-primary-custom">
+                <!-- STATUS UPDATE FORM -->
+                <h5 class="fw-bold text-primary-custom mb-3">
+                    <i class="bi bi-arrow-repeat me-2"></i>
                     Update Request Status
                 </h5>
 
@@ -774,10 +889,10 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                             <?php foreach ($allowedStatuses as $status): ?>
 
                                 <option
-                                    value="<?= htmlspecialchars($status) ?>"
+                                    value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>"
                                     <?= $request['status'] === $status ? 'selected' : '' ?>
                                 >
-                                    <?= htmlspecialchars($statusLabels[$status]) ?>
+                                    <?= htmlspecialchars($statusLabels[$status], ENT_QUOTES, 'UTF-8') ?>
                                 </option>
 
                             <?php endforeach; ?>
@@ -796,8 +911,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                             name="remarks"
                             class="form-control"
                             rows="3"
-                            placeholder="Enter remarks or an update for the resident..."
-                        ><?= htmlspecialchars($request['staff_remarks'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+                            placeholder="Enter remarks or an update for the resident..."><?= htmlspecialchars($request['staff_remarks'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
 
                     </div>
 
@@ -806,6 +920,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
                             value="1"
                             class="btn btn-primary-custom">
 
+                        <i class="bi bi-save me-1"></i>
                         Save Status Update
 
                     </button>
@@ -817,7 +932,7 @@ function getStatusBadge($status, $statusColors, $statusLabels) {
             <div class="modal-footer">
 
                 <button type="button"
-                        class="btn btn-secondary"
+                        class="btn btn-outline-secondary"
                         data-bs-dismiss="modal">
 
                     Close
