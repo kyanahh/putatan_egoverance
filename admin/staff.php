@@ -1,4 +1,3 @@
-
 <?php
 require_once '../includes/admin_auth.php';
 require_once '../includes/audit_helper.php';
@@ -8,18 +7,35 @@ $message = "";
 $message_type = "success";
 $generated_password = "";
 
-// Handle POST actions
+/*
+|--------------------------------------------------------------------------
+| HELPER
+|--------------------------------------------------------------------------
+*/
+function staff_admin_escape($value): string
+{
+    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+}
+
+/*
+|--------------------------------------------------------------------------
+| POST ACTIONS
+|--------------------------------------------------------------------------
+*/
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $action = $_POST['action'] ?? '';
 
-    // ADD STAFF
+    /*
+    |--------------------------------------------------------------------------
+    | ADD STAFF
+    |--------------------------------------------------------------------------
+    */
     if ($action === 'add_staff') {
 
         $full_name = trim($_POST['full_name'] ?? '');
         $email = trim($_POST['email'] ?? '');
         $username = trim($_POST['username'] ?? '');
-        $employee_number = trim($_POST['employee_number'] ?? '');
         $position = trim($_POST['position'] ?? '');
         $department = trim($_POST['department'] ?? '');
         $contact_number = trim($_POST['contact_number'] ?? '');
@@ -29,7 +45,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $full_name === '' ||
             $email === '' ||
             $username === '' ||
-            $employee_number === '' ||
             $position === ''
         ) {
 
@@ -45,7 +60,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
 
-                // Check duplicate email or username
                 $check = $pdo->prepare("
                     SELECT user_id
                     FROM users
@@ -66,7 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 } else {
 
-                    // Generate initial password
                     $generated_password = bin2hex(random_bytes(4));
                     $hashed_password = password_hash(
                         $generated_password,
@@ -75,7 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $pdo->beginTransaction();
 
-                    // Create user account
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Create user
+                    |--------------------------------------------------------------------------
+                    */
+
                     $user_stmt = $pdo->prepare("
                         INSERT INTO users (
                             full_name,
@@ -101,9 +119,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':password' => $hashed_password
                     ]);
 
-                    $new_user_id = $pdo->lastInsertId();
+                    $new_user_id = (int)$pdo->lastInsertId();
 
-                    // Create staff profile
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Automatically generate employee number
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $employee_number = 'EMP-' . str_pad(
+                        (string)$new_user_id,
+                        6,
+                        '0',
+                        STR_PAD_LEFT
+                    );
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Create staff profile
+                    |--------------------------------------------------------------------------
+                    */
+
                     $profile_stmt = $pdo->prepare("
                         INSERT INTO staff_profiles (
                             user_id,
@@ -135,14 +171,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     logAudit(
                         $pdo,
-                        'CREATE STAFF',
+                        'CREATE STAFF ACCOUNT',
                         'Staff Management',
-                        'Administrator created staff account: ' . $full_name . ' (User ID: ' . (int)$new_user_id . ')',
+                        "Created staff account for {$full_name} ({$employee_number}).",
                         (int)$_SESSION['user_id'],
-                        $_SESSION['role'] ?? 'admin'
+                        'admin'
                     );
 
-                    $message = "Staff account created successfully.";
+                    $message = "Staff account created successfully. Employee Number: {$employee_number}";
                     $message_type = "success";
 
                 }
@@ -161,7 +197,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // EDIT STAFF
+    /*
+    |--------------------------------------------------------------------------
+    | EDIT STAFF
+    |--------------------------------------------------------------------------
+    */
     elseif ($action === 'edit_staff') {
 
         $user_id = filter_input(INPUT_POST, 'user_id', FILTER_VALIDATE_INT);
@@ -169,13 +209,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $full_name = trim($_POST['full_name'] ?? '');
         $email = trim($_POST['email'] ?? '');
         $username = trim($_POST['username'] ?? '');
-        $employee_number = trim($_POST['employee_number'] ?? '');
         $position = trim($_POST['position'] ?? '');
         $department = trim($_POST['department'] ?? '');
         $contact_number = trim($_POST['contact_number'] ?? '');
         $date_hired = trim($_POST['date_hired'] ?? '');
 
-        if (!$user_id || $full_name === '' || $email === '' || $username === '' || $position === '') {
+        if (
+            !$user_id ||
+            $full_name === '' ||
+            $email === '' ||
+            $username === '' ||
+            $position === ''
+        ) {
 
             $message = "Please complete the required fields.";
             $message_type = "danger";
@@ -189,7 +234,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
 
-                // Check duplicate email/username belonging to another account
                 $check = $pdo->prepare("
                     SELECT user_id
                     FROM users
@@ -231,8 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $profile_stmt = $pdo->prepare("
                         UPDATE staff_profiles
-                        SET employee_number = :employee_number,
-                            position = :position,
+                        SET position = :position,
                             department = :department,
                             contact_number = :contact_number,
                             date_hired = :date_hired
@@ -240,7 +283,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ");
 
                     $profile_stmt->execute([
-                        ':employee_number' => $employee_number,
                         ':position' => $position,
                         ':department' => $department !== '' ? $department : null,
                         ':contact_number' => $contact_number !== '' ? $contact_number : null,
@@ -252,11 +294,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     logAudit(
                         $pdo,
-                        'UPDATE STAFF',
+                        'UPDATE STAFF ACCOUNT',
                         'Staff Management',
-                        'Administrator updated staff information for: ' . $full_name . ' (User ID: ' . (int)$user_id . ')',
+                        "Updated staff information for {$full_name}.",
                         (int)$_SESSION['user_id'],
-                        $_SESSION['role'] ?? 'admin'
+                        'admin'
                     );
 
                     $message = "Staff information updated successfully.";
@@ -277,69 +319,173 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // SUSPEND / REACTIVATE
+    /*
+    |--------------------------------------------------------------------------
+    | CHANGE STAFF PASSWORD
+    |--------------------------------------------------------------------------
+    */
+    elseif ($action === 'change_password') {
+
+        $user_id = filter_input(INPUT_POST, 'user_id', FILTER_VALIDATE_INT);
+        $new_password = $_POST['new_password'] ?? '';
+        $confirm_password = $_POST['confirm_password'] ?? '';
+
+        if (!$user_id) {
+
+            $message = "Invalid staff account.";
+            $message_type = "danger";
+
+        } elseif (strlen($new_password) < 8) {
+
+            $message = "Password must contain at least 8 characters.";
+            $message_type = "danger";
+
+        } elseif ($new_password !== $confirm_password) {
+
+            $message = "Passwords do not match.";
+            $message_type = "danger";
+
+        } else {
+
+            try {
+
+                // Confirm that the account belongs to staff
+                $check = $pdo->prepare("
+                    SELECT full_name
+                    FROM users
+                    WHERE user_id = :user_id
+                      AND role = 'staff'
+                    LIMIT 1
+                ");
+
+                $check->execute([
+                    ':user_id' => $user_id
+                ]);
+
+                $staff_account = $check->fetch();
+
+                if (!$staff_account) {
+
+                    $message = "Staff account not found.";
+                    $message_type = "danger";
+
+                } else {
+
+                    $hashed_password = password_hash(
+                        $new_password,
+                        PASSWORD_DEFAULT
+                    );
+
+                    $update = $pdo->prepare("
+                        UPDATE users
+                        SET password = :password
+                        WHERE user_id = :user_id
+                          AND role = 'staff'
+                    ");
+
+                    $update->execute([
+                        ':password' => $hashed_password,
+                        ':user_id' => $user_id
+                    ]);
+
+                    logAudit(
+                        $pdo,
+                        'CHANGE STAFF PASSWORD',
+                        'Staff Management',
+                        "Admin changed the password for staff account {$staff_account['full_name']}.",
+                        (int)$_SESSION['user_id'],
+                        'admin'
+                    );
+
+                    $message = "Staff password changed successfully.";
+                    $message_type = "success";
+
+                }
+
+            } catch (Throwable $e) {
+
+                $message = "Unable to change staff password.";
+                $message_type = "danger";
+
+            }
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SUSPEND / REACTIVATE
+    |--------------------------------------------------------------------------
+    */
     elseif ($action === 'toggle_status') {
 
         $user_id = filter_input(INPUT_POST, 'user_id', FILTER_VALIDATE_INT);
         $new_status = $_POST['new_status'] ?? '';
 
-        if (!$user_id || !in_array($new_status, ['approved', 'suspended'], true)) {
+        if (
+            !$user_id ||
+            !in_array($new_status, ['approved', 'suspended'], true)
+        ) {
 
             $message = "Invalid staff account action.";
             $message_type = "danger";
 
         } else {
 
-            // Retrieve staff name for the audit description
-            $name_stmt = $pdo->prepare("
-                SELECT full_name
-                FROM users
-                WHERE user_id = :user_id AND role = 'staff'
-                LIMIT 1
-            ");
-            $name_stmt->execute([':user_id' => $user_id]);
-            $staff_name = $name_stmt->fetchColumn();
+            try {
 
-            $stmt = $pdo->prepare("
-                UPDATE users
-                SET account_status = :status
-                WHERE user_id = :user_id
-                  AND role = 'staff'
-            ");
+                $stmt = $pdo->prepare("
+                    UPDATE users
+                    SET account_status = :status
+                    WHERE user_id = :user_id
+                      AND role = 'staff'
+                ");
 
-            $stmt->execute([
-                ':status' => $new_status,
-                ':user_id' => $user_id
-            ]);
+                $stmt->execute([
+                    ':status' => $new_status,
+                    ':user_id' => $user_id
+                ]);
 
-            if ($stmt->rowCount() > 0) {
-                $message = $new_status === 'suspended'
-                    ? "Staff account suspended."
-                    : "Staff account reactivated.";
+                if ($stmt->rowCount() > 0) {
 
-                $message_type = "success";
+                    $message = $new_status === 'suspended'
+                        ? "Staff account suspended."
+                        : "Staff account reactivated.";
 
-                $audit_action = $new_status === 'suspended'
-                    ? 'SUSPEND STAFF'
-                    : 'REACTIVATE STAFF';
+                    $message_type = "success";
 
-                logAudit(
-                    $pdo,
-                    $audit_action,
-                    'Staff Management',
-                    'Administrator ' . ($new_status === 'suspended' ? 'suspended' : 'reactivated') .
-                    ' staff account: ' . ($staff_name ?: 'Unknown Staff') . ' (User ID: ' . (int)$user_id . ')',
-                    (int)$_SESSION['user_id'],
-                    $_SESSION['role'] ?? 'admin'
-                );
-            } else {
-                $message = "No changes were made.";
+                    logAudit(
+                        $pdo,
+                        $new_status === 'suspended'
+                            ? 'SUSPEND STAFF ACCOUNT'
+                            : 'REACTIVATE STAFF ACCOUNT',
+                        'Staff Management',
+                        "Staff account ID {$user_id} status changed to {$new_status}.",
+                        (int)$_SESSION['user_id'],
+                        'admin'
+                    );
+
+                } else {
+
+                    $message = "No changes were made.";
+
+                }
+
+            } catch (Throwable $e) {
+
+                $message = "Unable to update staff account status.";
+                $message_type = "danger";
+
             }
         }
     }
 }
 
-// Search
+/*
+|--------------------------------------------------------------------------
+| SEARCH STAFF
+|--------------------------------------------------------------------------
+*/
+
 $search = trim($_GET['search'] ?? '');
 
 $sql = "
@@ -383,14 +529,21 @@ $sql .= " ORDER BY u.full_name ASC";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
+
 $staff_members = $stmt->fetchAll();
 
-// Staff counts
+/*
+|--------------------------------------------------------------------------
+| COUNTS
+|--------------------------------------------------------------------------
+*/
+
 $total_staff = count($staff_members);
 $active_staff = 0;
 $suspended_staff = 0;
 
 foreach ($staff_members as $staff) {
+
     if ($staff['account_status'] === 'approved') {
         $active_staff++;
     } elseif ($staff['account_status'] === 'suspended') {
@@ -401,6 +554,7 @@ foreach ($staff_members as $staff) {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 
     <meta charset="UTF-8">
@@ -420,6 +574,8 @@ foreach ($staff_members as $staff) {
 
 <body class="admin-page">
 
+<!-- NAVBAR -->
+
 <nav class="navbar navbar-dark barangay-navbar">
 
     <div class="container-fluid px-4">
@@ -438,7 +594,7 @@ foreach ($staff_members as $staff) {
         <div class="d-flex align-items-center gap-3">
 
             <span class="text-white">
-                <?= htmlspecialchars($_SESSION['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                <?= staff_admin_escape($_SESSION['full_name'] ?? 'Admin') ?>
             </span>
 
             <a href="../logout.php"
@@ -457,7 +613,7 @@ foreach ($staff_members as $staff) {
     <div class="row">
 
         <!-- SIDEBAR -->
-        <!-- Sidebar -->
+
         <aside class="col-md-3 col-lg-2 admin-sidebar p-3">
 
             <small class="text-muted text-uppercase fw-bold">
@@ -466,62 +622,51 @@ foreach ($staff_members as $staff) {
 
             <nav class="nav flex-column gap-2 mt-3">
 
-                <a class="nav-link admin-nav-link"
-                   href="dashboard.php">
+                <a class="nav-link admin-nav-link" href="dashboard.php">
                     <i class="bi bi-grid me-2"></i>Dashboard
                 </a>
 
-                <a class="nav-link admin-nav-link"
-                   href="residents.php">
+                <a class="nav-link admin-nav-link" href="residents.php">
                     <i class="bi bi-people me-2"></i>Resident Approvals
                 </a>
 
-                <a class="nav-link admin-nav-link"
-                   href="users.php">
+                <a class="nav-link admin-nav-link" href="users.php">
                     <i class="bi bi-person-gear me-2"></i>User Management
                 </a>
 
-                <a class="nav-link admin-nav-link active"
-                   href="staff.php">
+                <a class="nav-link admin-nav-link active" href="staff.php">
                     <i class="bi bi-person-badge me-2"></i>Staff Management
                 </a>
 
-                <a class="nav-link admin-nav-link"
-                   href="service-types.php">
+                <a class="nav-link admin-nav-link" href="service-types.php">
                     <i class="bi bi-list-check me-2"></i>Service Types
                 </a>
 
-                <a class="nav-link admin-nav-link"
-                   href="service-requests.php">
+                <a class="nav-link admin-nav-link" href="service-requests.php">
                     <i class="bi bi-card-checklist me-2"></i>Service Requests
                 </a>
 
-                <a class="nav-link admin-nav-link"
-                   href="announcements.php">
+                <a class="nav-link admin-nav-link" href="announcements.php">
                     <i class="bi bi-megaphone me-2"></i>Announcements
                 </a>
 
-                <a class="nav-link admin-nav-link"
-                   href="feedback.php">
+                <a class="nav-link admin-nav-link" href="feedback.php">
                     <i class="bi bi-chat-left-text me-2"></i>Complaints & Feedback
                 </a>
 
-                <a class="nav-link admin-nav-link"
-                   href="analytics.php">
+                <a class="nav-link admin-nav-link" href="analytics.php">
                     <i class="bi bi-bar-chart me-2"></i>Feedback Analytics
                 </a>
 
-                <a class="nav-link admin-nav-link"
-                   href="reports.php">
+                <a class="nav-link admin-nav-link" href="reports.php">
                     <i class="bi bi-file-earmark-bar-graph me-2"></i>Reports
                 </a>
 
                 <a href="audit-trail.php" class="nav-link admin-nav-link">
-                    <i class="bi bi-shield-check me-2"></i> Audit Trail
+                    <i class="bi bi-shield-check me-2"></i>Audit Trail
                 </a>
 
-                <a class="nav-link admin-nav-link"
-                   href="settings.php">
+                <a class="nav-link admin-nav-link" href="settings.php">
                     <i class="bi bi-gear me-2"></i>Settings
                 </a>
 
@@ -530,6 +675,7 @@ foreach ($staff_members as $staff) {
         </aside>
 
         <!-- MAIN CONTENT -->
+
         <main class="col-md-9 col-lg-10 px-4 py-4">
 
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
@@ -559,11 +705,12 @@ foreach ($staff_members as $staff) {
             </div>
 
             <!-- MESSAGE -->
+
             <?php if ($message !== ""): ?>
 
-                <div class="alert alert-<?= $message_type ?> alert-dismissible fade show">
+                <div class="alert alert-<?= staff_admin_escape($message_type) ?> alert-dismissible fade show">
 
-                    <?= htmlspecialchars($message, ENT_QUOTES, 'UTF-8') ?>
+                    <?= staff_admin_escape($message) ?>
 
                     <button type="button"
                             class="btn-close"
@@ -574,47 +721,8 @@ foreach ($staff_members as $staff) {
 
             <?php endif; ?>
 
-            <!-- GENERATED PASSWORD -->
-            <?php if ($generated_password !== ""): ?>
-
-                <div class="alert alert-success">
-
-                    <h6 class="fw-bold">
-                        <i class="bi bi-key me-2"></i>
-                        Initial Staff Password
-                    </h6>
-
-                    <p class="mb-2">
-                        Please provide this initial password to the staff member
-                        through a secure channel.
-                    </p>
-
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-
-                        <code class="fs-5">
-                            <?= htmlspecialchars($generated_password, ENT_QUOTES, 'UTF-8') ?>
-                        </code>
-
-                        <button type="button"
-                                class="btn btn-sm btn-outline-success"
-                                onclick="navigator.clipboard.writeText('<?= htmlspecialchars($generated_password, ENT_QUOTES, 'UTF-8') ?>')">
-
-                            <i class="bi bi-clipboard me-1"></i>
-                            Copy
-
-                        </button>
-
-                    </div>
-
-                    <small class="text-muted">
-                        This password is displayed only after account creation.
-                    </small>
-
-                </div>
-
-            <?php endif; ?>
-
             <!-- STATISTICS -->
+
             <div class="row g-3 mb-4">
 
                 <div class="col-md-4">
@@ -628,7 +736,7 @@ foreach ($staff_members as $staff) {
                             </div>
 
                             <h3 class="fw-bold text-primary-custom">
-                                <?= $total_staff ?>
+                                <?= number_format($total_staff) ?>
                             </h3>
 
                         </div>
@@ -648,7 +756,7 @@ foreach ($staff_members as $staff) {
                             </div>
 
                             <h3 class="fw-bold text-success">
-                                <?= $active_staff ?>
+                                <?= number_format($active_staff) ?>
                             </h3>
 
                         </div>
@@ -668,7 +776,7 @@ foreach ($staff_members as $staff) {
                             </div>
 
                             <h3 class="fw-bold text-danger">
-                                <?= $suspended_staff ?>
+                                <?= number_format($suspended_staff) ?>
                             </h3>
 
                         </div>
@@ -680,6 +788,7 @@ foreach ($staff_members as $staff) {
             </div>
 
             <!-- SEARCH -->
+
             <div class="card border-0 shadow-sm mb-4">
 
                 <div class="card-body">
@@ -692,7 +801,7 @@ foreach ($staff_members as $staff) {
                                    name="search"
                                    class="form-control"
                                    placeholder="Search name, email, username, employee number, position..."
-                                   value="<?= htmlspecialchars($search, ENT_QUOTES, 'UTF-8') ?>">
+                                   value="<?= staff_admin_escape($search) ?>">
 
                         </div>
 
@@ -715,6 +824,7 @@ foreach ($staff_members as $staff) {
             </div>
 
             <!-- STAFF TABLE -->
+
             <div class="card border-0 shadow-sm">
 
                 <div class="card-header bg-white py-3">
@@ -759,27 +869,29 @@ foreach ($staff_members as $staff) {
                                         <tr>
 
                                             <td>
-                                                <?= htmlspecialchars($staff['employee_number'], ENT_QUOTES, 'UTF-8') ?>
+                                                <span class="fw-semibold">
+                                                    <?= staff_admin_escape($staff['employee_number']) ?>
+                                                </span>
                                             </td>
 
                                             <td>
 
                                                 <div class="fw-semibold">
-                                                    <?= htmlspecialchars($staff['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                                                    <?= staff_admin_escape($staff['full_name']) ?>
                                                 </div>
 
                                                 <small class="text-muted">
-                                                    <?= htmlspecialchars($staff['email'], ENT_QUOTES, 'UTF-8') ?>
+                                                    <?= staff_admin_escape($staff['email']) ?>
                                                 </small>
 
                                             </td>
 
                                             <td>
-                                                <?= htmlspecialchars($staff['position'], ENT_QUOTES, 'UTF-8') ?>
+                                                <?= staff_admin_escape($staff['position']) ?>
                                             </td>
 
                                             <td>
-                                                <?= htmlspecialchars($staff['department'] ?? '—', ENT_QUOTES, 'UTF-8') ?>
+                                                <?= staff_admin_escape($staff['department'] ?? '—') ?>
                                             </td>
 
                                             <td>
@@ -805,8 +917,10 @@ foreach ($staff_members as $staff) {
                                                 <div class="d-flex gap-2 flex-wrap">
 
                                                     <!-- EDIT -->
+
                                                     <button type="button"
                                                             class="btn btn-outline-primary btn-sm"
+                                                            title="Edit Staff"
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#editStaffModal<?= (int)$staff['user_id'] ?>">
 
@@ -814,9 +928,23 @@ foreach ($staff_members as $staff) {
 
                                                     </button>
 
+                                                    <!-- CHANGE PASSWORD -->
+
+                                                    <button type="button"
+                                                            class="btn btn-outline-warning btn-sm"
+                                                            title="Change Password"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#passwordModal<?= (int)$staff['user_id'] ?>">
+
+                                                        <i class="bi bi-key"></i>
+
+                                                    </button>
+
                                                     <!-- STATUS -->
+
                                                     <button type="button"
                                                             class="btn btn-outline-<?= $staff['account_status'] === 'approved' ? 'danger' : 'success' ?> btn-sm"
+                                                            title="<?= $staff['account_status'] === 'approved' ? 'Suspend' : 'Reactivate' ?>"
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#statusModal<?= (int)$staff['user_id'] ?>">
 
@@ -830,7 +958,8 @@ foreach ($staff_members as $staff) {
 
                                         </tr>
 
-                                        <!-- EDIT MODAL -->
+                                        <!-- EDIT STAFF MODAL -->
+
                                         <div class="modal fade"
                                              id="editStaffModal<?= (int)$staff['user_id'] ?>"
                                              tabindex="-1">
@@ -876,7 +1005,7 @@ foreach ($staff_members as $staff) {
                                                                            name="full_name"
                                                                            class="form-control"
                                                                            required
-                                                                           value="<?= htmlspecialchars($staff['full_name'], ENT_QUOTES, 'UTF-8') ?>">
+                                                                           value="<?= staff_admin_escape($staff['full_name']) ?>">
 
                                                                 </div>
 
@@ -890,7 +1019,7 @@ foreach ($staff_members as $staff) {
                                                                            name="email"
                                                                            class="form-control"
                                                                            required
-                                                                           value="<?= htmlspecialchars($staff['email'], ENT_QUOTES, 'UTF-8') ?>">
+                                                                           value="<?= staff_admin_escape($staff['email']) ?>">
 
                                                                 </div>
 
@@ -904,7 +1033,7 @@ foreach ($staff_members as $staff) {
                                                                            name="username"
                                                                            class="form-control"
                                                                            required
-                                                                           value="<?= htmlspecialchars($staff['username'], ENT_QUOTES, 'UTF-8') ?>">
+                                                                           value="<?= staff_admin_escape($staff['username']) ?>">
 
                                                                 </div>
 
@@ -915,10 +1044,13 @@ foreach ($staff_members as $staff) {
                                                                     </label>
 
                                                                     <input type="text"
-                                                                           name="employee_number"
                                                                            class="form-control"
-                                                                           required
-                                                                           value="<?= htmlspecialchars($staff['employee_number'], ENT_QUOTES, 'UTF-8') ?>">
+                                                                           value="<?= staff_admin_escape($staff['employee_number']) ?>"
+                                                                           readonly>
+
+                                                                    <small class="text-muted">
+                                                                        Automatically generated and cannot be changed.
+                                                                    </small>
 
                                                                 </div>
 
@@ -932,7 +1064,7 @@ foreach ($staff_members as $staff) {
                                                                            name="position"
                                                                            class="form-control"
                                                                            required
-                                                                           value="<?= htmlspecialchars($staff['position'], ENT_QUOTES, 'UTF-8') ?>">
+                                                                           value="<?= staff_admin_escape($staff['position']) ?>">
 
                                                                 </div>
 
@@ -945,7 +1077,7 @@ foreach ($staff_members as $staff) {
                                                                     <input type="text"
                                                                            name="department"
                                                                            class="form-control"
-                                                                           value="<?= htmlspecialchars($staff['department'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                                                           value="<?= staff_admin_escape($staff['department'] ?? '') ?>">
 
                                                                 </div>
 
@@ -958,7 +1090,7 @@ foreach ($staff_members as $staff) {
                                                                     <input type="text"
                                                                            name="contact_number"
                                                                            class="form-control"
-                                                                           value="<?= htmlspecialchars($staff['contact_number'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                                                           value="<?= staff_admin_escape($staff['contact_number'] ?? '') ?>">
 
                                                                 </div>
 
@@ -971,7 +1103,7 @@ foreach ($staff_members as $staff) {
                                                                     <input type="date"
                                                                            name="date_hired"
                                                                            class="form-control"
-                                                                           value="<?= htmlspecialchars($staff['date_hired'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                                                           value="<?= staff_admin_escape($staff['date_hired'] ?? '') ?>">
 
                                                                 </div>
 
@@ -1002,7 +1134,129 @@ foreach ($staff_members as $staff) {
 
                                         </div>
 
+                                        <!-- CHANGE PASSWORD MODAL -->
+
+                                        <div class="modal fade"
+                                             id="passwordModal<?= (int)$staff['user_id'] ?>"
+                                             tabindex="-1">
+
+                                            <div class="modal-dialog modal-dialog-centered">
+
+                                                <div class="modal-content">
+
+                                                    <form method="POST">
+
+                                                        <div class="modal-header">
+
+                                                            <h5 class="modal-title fw-bold">
+
+                                                                <i class="bi bi-key me-2"></i>
+                                                                Change Staff Password
+
+                                                            </h5>
+
+                                                            <button type="button"
+                                                                    class="btn-close"
+                                                                    data-bs-dismiss="modal">
+                                                            </button>
+
+                                                        </div>
+
+                                                        <div class="modal-body">
+
+                                                            <input type="hidden"
+                                                                   name="action"
+                                                                   value="change_password">
+
+                                                            <input type="hidden"
+                                                                   name="user_id"
+                                                                   value="<?= (int)$staff['user_id'] ?>">
+
+                                                            <div class="mb-3">
+
+                                                                <label class="form-label fw-semibold">
+                                                                    Staff Member
+                                                                </label>
+
+                                                                <input type="text"
+                                                                       class="form-control"
+                                                                       value="<?= staff_admin_escape($staff['full_name']) ?>"
+                                                                       readonly>
+
+                                                            </div>
+
+                                                            <div class="mb-3">
+
+                                                                <label class="form-label">
+                                                                    New Password
+                                                                </label>
+
+                                                                <input type="password"
+                                                                       name="new_password"
+                                                                       class="form-control"
+                                                                       minlength="8"
+                                                                       autocomplete="new-password"
+                                                                       required>
+
+                                                                <small class="text-muted">
+                                                                    Minimum of 8 characters.
+                                                                </small>
+
+                                                            </div>
+
+                                                            <div class="mb-3">
+
+                                                                <label class="form-label">
+                                                                    Confirm New Password
+                                                                </label>
+
+                                                                <input type="password"
+                                                                       name="confirm_password"
+                                                                       class="form-control"
+                                                                       minlength="8"
+                                                                       autocomplete="new-password"
+                                                                       required>
+
+                                                            </div>
+
+                                                            <div class="alert alert-warning mb-0">
+
+                                                                <i class="bi bi-exclamation-triangle me-2"></i>
+
+                                                                Changing this password will replace the staff member's current password.
+
+                                                            </div>
+
+                                                        </div>
+
+                                                        <div class="modal-footer">
+
+                                                            <button type="button"
+                                                                    class="btn btn-light border"
+                                                                    data-bs-dismiss="modal">
+                                                                Cancel
+                                                            </button>
+
+                                                            <button type="submit"
+                                                                    class="btn btn-warning">
+
+                                                                <i class="bi bi-key me-1"></i>
+                                                                Change Password
+
+                                                            </button>
+
+                                                        </div>
+
+                                                    </form>
+
+                                                </div>
+
+                                            </div>
+
+                                        </div>
+
                                         <!-- STATUS MODAL -->
+
                                         <div class="modal fade"
                                              id="statusModal<?= (int)$staff['user_id'] ?>"
                                              tabindex="-1">
@@ -1016,9 +1270,11 @@ foreach ($staff_members as $staff) {
                                                         <div class="modal-header">
 
                                                             <h5 class="modal-title fw-bold">
+
                                                                 <?= $staff['account_status'] === 'approved'
                                                                     ? 'Suspend Staff Account'
                                                                     : 'Reactivate Staff Account' ?>
+
                                                             </h5>
 
                                                             <button type="button"
@@ -1031,13 +1287,15 @@ foreach ($staff_members as $staff) {
                                                         <div class="modal-body">
 
                                                             <p>
+
                                                                 <?= $staff['account_status'] === 'approved'
                                                                     ? 'Are you sure you want to suspend this staff account?'
                                                                     : 'Are you sure you want to reactivate this staff account?' ?>
+
                                                             </p>
 
                                                             <h6 class="fw-bold">
-                                                                <?= htmlspecialchars($staff['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                                                                <?= staff_admin_escape($staff['full_name']) ?>
                                                             </h6>
 
                                                             <input type="hidden"
@@ -1102,6 +1360,7 @@ foreach ($staff_members as $staff) {
 </div>
 
 <!-- ADD STAFF MODAL -->
+
 <div class="modal fade"
      id="addStaffModal"
      tabindex="-1">
@@ -1115,8 +1374,10 @@ foreach ($staff_members as $staff) {
                 <div class="modal-header">
 
                     <h5 class="modal-title fw-bold">
+
                         <i class="bi bi-person-plus me-2"></i>
                         Add New Staff
+
                     </h5>
 
                     <button type="button"
@@ -1173,16 +1434,22 @@ foreach ($staff_members as $staff) {
 
                         </div>
 
+                        <!-- AUTOMATIC EMPLOYEE NUMBER -->
+
                         <div class="col-md-6">
 
                             <label class="form-label">
-                                Employee Number *
+                                Employee Number
                             </label>
 
                             <input type="text"
-                                   name="employee_number"
                                    class="form-control"
-                                   required>
+                                   value="Automatically generated"
+                                   readonly>
+
+                            <small class="text-muted">
+                                Generated automatically after account creation.
+                            </small>
 
                         </div>
 
@@ -1243,8 +1510,7 @@ foreach ($staff_members as $staff) {
 
                         <i class="bi bi-info-circle me-2"></i>
 
-                        A temporary password will be generated automatically
-                        after the staff account is created.
+                        A temporary password will be generated automatically after the staff account is created.
 
                     </div>
 
