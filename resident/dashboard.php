@@ -151,31 +151,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' &&
 /* ==========================================
    SERVICE REQUEST STATISTICS
 ========================================== */
+
+$total_requests = 0;
+$recent_requests = [];
+$resident_id = 0;
+
 try {
 
+    // Get the actual resident ID associated with the logged-in user
     $stmt = $pdo->prepare("
-        SELECT COUNT(*)
-        FROM service_requests
-        WHERE resident_id = ?
+        SELECT resident_id
+        FROM resident_profiles
+        WHERE user_id = ?
+        LIMIT 1
     ");
 
     $stmt->execute([$user_id]);
-    $total_requests = (int) $stmt->fetchColumn();
+    $resident_id = (int) $stmt->fetchColumn();
 
-    $stmt = $pdo->prepare("
-        SELECT reference_number, purpose, status, requested_at
-        FROM service_requests
-        WHERE resident_id = ?
-        ORDER BY requested_at DESC
-        LIMIT 5
-    ");
+    if ($resident_id > 0) {
 
-    $stmt->execute([$user_id]);
-    $recent_requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Get total submitted service requests
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM service_requests
+            WHERE resident_id = ?
+        ");
+
+        $stmt->execute([$resident_id]);
+        $total_requests = (int) $stmt->fetchColumn();
+
+        // Get the five most recent service requests
+        $stmt = $pdo->prepare("
+            SELECT
+                reference_number,
+                purpose,
+                status,
+                requested_at
+            FROM service_requests
+            WHERE resident_id = ?
+            ORDER BY requested_at DESC
+            LIMIT 5
+        ");
+
+        $stmt->execute([$resident_id]);
+        $recent_requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    }
 
 } catch (PDOException $e) {
+
+    error_log('Resident dashboard service request error: ' . $e->getMessage());
+
     $total_requests = 0;
     $recent_requests = [];
+
 }
 
 /* ==========================================
