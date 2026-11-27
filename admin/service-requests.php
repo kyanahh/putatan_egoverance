@@ -256,7 +256,10 @@ $sql = "
         rp.middle_name,
         rp.last_name,
         rp.suffix,
-        u.full_name AS account_name
+        u.full_name AS account_name,
+        sra.application_type,
+        sra.applicant_snapshot,
+        sra.application_data
     FROM service_requests sr
     INNER JOIN service_types st
         ON sr.service_type_id = st.service_type_id
@@ -264,6 +267,8 @@ $sql = "
         ON sr.resident_id = rp.resident_id
     INNER JOIN users u
         ON rp.user_id = u.user_id
+    LEFT JOIN service_request_applications sra
+        ON sr.request_id = sra.request_id
     WHERE 1=1
 ";
 
@@ -327,6 +332,93 @@ function getStatusBadge($status, $statusColors, $statusLabels)
     return '<span class="badge bg-' . $color . '">' .
         htmlspecialchars($label, ENT_QUOTES, 'UTF-8') .
         '</span>';
+}
+
+/* =========================================================
+   JSON APPLICATION DATA HELPERS
+========================================================= */
+
+function decodeApplicationJSON($json)
+{
+    if (empty($json)) {
+        return [];
+    }
+
+    $decoded = json_decode($json, true);
+
+    return is_array($decoded) ? $decoded : [];
+}
+
+function formatApplicationLabel($key)
+{
+    $key = str_replace(['_', '-'], ' ', $key);
+
+    return ucwords($key);
+}
+
+function renderApplicationData($data)
+{
+    if (!is_array($data) || empty($data)) {
+        return '<p class="text-muted mb-0">No information available.</p>';
+    }
+
+    $html = '<div class="table-responsive">';
+    $html .= '<table class="table table-sm table-bordered align-middle mb-0">';
+    $html .= '<tbody>';
+
+    foreach ($data as $key => $value) {
+
+        if (is_array($value)) {
+
+            $html .= '<tr>';
+            $html .= '<th colspan="2" class="table-light">';
+            $html .= htmlspecialchars(
+                formatApplicationLabel($key),
+                ENT_QUOTES,
+                'UTF-8'
+            );
+            $html .= '</th>';
+            $html .= '</tr>';
+
+            $html .= '<tr><td colspan="2">';
+            $html .= renderApplicationData($value);
+            $html .= '</td></tr>';
+
+            continue;
+        }
+
+        if ($value === null || $value === '') {
+            $value = 'Not provided';
+        } elseif (is_bool($value)) {
+            $value = $value ? 'Yes' : 'No';
+        }
+
+        $html .= '<tr>';
+
+        $html .= '<th style="width:40%">';
+        $html .= htmlspecialchars(
+            formatApplicationLabel($key),
+            ENT_QUOTES,
+            'UTF-8'
+        );
+        $html .= '</th>';
+
+        $html .= '<td>';
+        $html .= htmlspecialchars(
+            (string)$value,
+            ENT_QUOTES,
+            'UTF-8'
+        );
+        $html .= '</td>';
+
+        $html .= '</tr>';
+    }
+
+    $html .= '</tbody>';
+    $html .= '</table>';
+    $html .= '</div>';
+
+    return $html;
 }
 ?>
 
@@ -430,6 +522,11 @@ function getStatusBadge($status, $statusColors, $statusLabels)
                 <a class="nav-link admin-nav-link"
                    href="residents.php">
                     <i class="bi bi-people me-2"></i>Resident Approvals
+                </a>
+
+                <a class="nav-link admin-nav-link"
+                   href="resident-directory.php">
+                    <i class="bi bi-person-vcard me-2"></i>Resident Directory
                 </a>
 
                 <a class="nav-link admin-nav-link"
@@ -725,6 +822,16 @@ function getStatusBadge($status, $statusColors, $statusLabels)
 ===================================================== -->
 <?php foreach ($requests as $request): ?>
 
+<?php
+    $applicantData = decodeApplicationJSON(
+        $request['applicant_snapshot'] ?? ''
+    );
+
+    $applicationData = decodeApplicationJSON(
+        $request['application_data'] ?? ''
+    );
+?>
+
 <div class="modal fade"
      id="requestModal<?= (int)$request['request_id'] ?>"
      tabindex="-1"
@@ -750,6 +857,54 @@ function getStatusBadge($status, $statusColors, $statusLabels)
             </div>
 
             <div class="modal-body">
+
+            <!-- APPLICANT INFORMATION -->
+            <div class="mb-4">
+
+                <h5 class="fw-bold text-primary-custom mb-3">
+                    <i class="bi bi-person-lines-fill me-2"></i>
+                    Applicant Information
+                </h5>
+
+                <?php if (!empty($applicantData)): ?>
+
+                    <?= renderApplicationData($applicantData) ?>
+
+                <?php else: ?>
+
+                    <div class="alert alert-light mb-0">
+                        Applicant information snapshot is unavailable for this request.
+                    </div>
+
+                <?php endif; ?>
+
+            </div>
+
+            <hr>
+
+            <!-- SERVICE-SPECIFIC APPLICATION DETAILS -->
+            <div class="mb-4">
+
+                <h5 class="fw-bold text-primary-custom mb-3">
+                    <i class="bi bi-file-earmark-text me-2"></i>
+                    Application Details
+                </h5>
+
+                <?php if (!empty($applicationData)): ?>
+
+                    <?= renderApplicationData($applicationData) ?>
+
+                <?php else: ?>
+
+                    <div class="alert alert-light mb-0">
+                        No additional application data is available.
+                    </div>
+
+                <?php endif; ?>
+
+            </div>
+
+            <hr>
 
                 <!-- REQUEST INFORMATION -->
                 <div class="row g-3 mb-3">
@@ -853,6 +1008,53 @@ function getStatusBadge($status, $statusColors, $statusLabels)
                     </div>
 
                 </div>
+
+                <hr>
+
+                <!-- =====================================================
+                    PRINT CERTIFICATE
+                ===================================================== -->
+
+                <?php if (in_array($request['status'], ['approved', 'ready_for_release', 'completed'], true)): ?>
+
+                    <div class="mb-4">
+
+                        <div class="alert alert-success">
+
+                            <i class="bi bi-file-earmark-check me-2"></i>
+
+                            This request is approved for certificate printing.
+
+                        </div>
+
+                        <?php
+                        $serviceNameForPrint = strtolower(trim($request['service_name']));
+
+                        if (
+                            strpos($serviceNameForPrint, 'business clearance') !== false ||
+                            strpos($serviceNameForPrint, 'barangay business clearance') !== false
+                        ) {
+                            $printLink = 'print-business-clearance.php?request_id=' . (int)$request['request_id'];
+                            $printLabel = 'Print Business Clearance';
+                        } else {
+                            $printLink = 'print-certificate.php?request_id=' . (int)$request['request_id'];
+                            $printLabel = 'Print Document / Certificate';
+                        }
+                        ?>
+
+                        <a
+                            href="<?= htmlspecialchars($printLink, ENT_QUOTES, 'UTF-8') ?>"
+                            target="_blank"
+                            class="btn btn-success">
+
+                            <i class="bi bi-printer me-2"></i>
+                            <?= htmlspecialchars($printLabel, ENT_QUOTES, 'UTF-8') ?>
+
+                        </a>
+
+                    </div>
+
+                <?php endif; ?>
 
                 <hr>
 

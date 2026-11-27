@@ -103,6 +103,11 @@ $recent_pending = $pdo->query("
                 </a>
 
                 <a class="nav-link admin-nav-link"
+                   href="resident-directory.php">
+                    <i class="bi bi-person-vcard me-2"></i>Resident Directory
+                </a>
+
+                <a class="nav-link admin-nav-link"
                    href="users.php">
                     <i class="bi bi-person-gear me-2"></i>User Management
                 </a>
