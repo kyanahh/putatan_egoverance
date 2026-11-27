@@ -685,6 +685,28 @@ foreach ($requests as $request) {
             margin-bottom: 20px;
         }
 
+        /* Staff Service Requests UI refinements */
+        .staff-request-card { transition: transform .15s ease, box-shadow .15s ease; }
+        .staff-request-card:hover { transform: translateY(-2px); box-shadow: 0 5px 16px rgba(0,0,0,.08); }
+        .request-table { min-width: 900px; }
+        .request-table td { vertical-align: middle; }
+        .request-table tbody tr:hover { background: rgba(23,47,128,.035); }
+        .request-details { overflow-wrap: anywhere; }
+        .request-modal-section { background: #f8f9fc; border: 1px solid #e8ebf2; border-radius: 10px; padding: 14px; }
+        .request-modal-label { font-size: .78rem; color: #6c757d; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+        .request-modal-value { font-weight: 500; overflow-wrap: anywhere; }
+        .modal-body { max-height: calc(100vh - 180px); overflow-y: auto; }
+        .history-item { position: relative; }
+        .history-item:last-child { margin-bottom: 0; }
+        .request-table .btn { white-space: nowrap; }
+        @media (max-width: 768px) {
+            .admin-sidebar { min-height: auto !important; }
+            main { min-width: 0; }
+            .request-table { min-width: 850px; }
+            .modal-dialog { margin: .5rem; }
+            .modal-body { max-height: calc(100vh - 150px); }
+        }
+
     </style>
 
 </head>
@@ -1288,7 +1310,7 @@ foreach ($requests as $request) {
 
                 <!-- REQUEST INFORMATION -->
 
-                <div class="row g-3 mb-3">
+                <div class="row g-3 mb-3 request-modal-section">
 
                     <div class="col-md-6">
 
@@ -1442,6 +1464,7 @@ foreach ($requests as $request) {
                     Update Request
 
                 </h5>
+                <p class="text-muted small mb-3">Update the request status and provide remarks that will be saved to the request history.</p>
 
                 <form method="POST">
 
@@ -1520,6 +1543,37 @@ foreach ($requests as $request) {
                     </button>
 
                 </form>
+
+                <hr>
+
+                <!-- DOCUMENT PRINTING -->
+
+                <?php
+                $printStatusAllowed = in_array(
+                    strtolower(trim((string)$request['status'])),
+                    ['approved', 'ready_for_release', 'completed'],
+                    true
+                );
+                $serviceNameForPrint = strtolower(trim((string)($request['service_name'] ?? '')));
+                $isBusinessClearance = strpos($serviceNameForPrint, 'business') !== false
+                    && strpos($serviceNameForPrint, 'clearance') !== false;
+                ?>
+
+                <?php if ($printStatusAllowed): ?>
+                    <div class="request-modal-section mb-3">
+                        <h5 class="fw-bold mb-3"><i class="bi bi-printer me-2"></i>Document Issuance</h5>
+                        <p class="small text-muted mb-3">Printing is available for approved, ready-for-release, or completed requests.</p>
+                        <?php if ($isBusinessClearance): ?>
+                            <a class="btn btn-outline-primary" target="_blank" rel="noopener" href="print-business-clearance.php?request_id=<?= (int)$request['request_id'] ?>">
+                                <i class="bi bi-printer me-1"></i> Print Business Clearance
+                            </a>
+                        <?php else: ?>
+                            <a class="btn btn-outline-primary" target="_blank" rel="noopener" href="print-certificate.php?request_id=<?= (int)$request['request_id'] ?>">
+                                <i class="bi bi-printer me-1"></i> Print Certificate
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
 
                 <hr>
 

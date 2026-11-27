@@ -171,7 +171,7 @@ if (staffTableExists($pdo, 'service_requests')) {
                 if (
                     in_array(
                         $normalized_status,
-                        ['processing', 'in progress', 'ongoing'],
+                        ['processing', 'in progress', 'ongoing', 'under review', 'ready for release'],
                         true
                     )
                 ) {
@@ -181,7 +181,7 @@ if (staffTableExists($pdo, 'service_requests')) {
                 if (
                     in_array(
                         $normalized_status,
-                        ['completed', 'approved', 'released', 'resolved'],
+                        ['completed', 'released', 'resolved'],
                         true
                     )
                 ) {
@@ -203,7 +203,7 @@ if (staffTableExists($pdo, 'service_requests')) {
 
         $date_column = staffFindColumn(
             $request_columns,
-            ['created_at', 'request_date', 'date_requested']
+            ['requested_at', 'created_at', 'request_date', 'date_requested']
         );
 
         $order_column = $date_column ?? $id_column;
@@ -248,7 +248,7 @@ $request_status_column = staffFindColumn(
 
 $request_date_column = staffFindColumn(
     $request_columns,
-    ['created_at', 'request_date', 'date_requested']
+    ['requested_at', 'created_at', 'request_date', 'date_requested']
 );
 
 $request_type_column = staffFindColumn(
@@ -754,7 +754,7 @@ $request_user_column = staffFindColumn(
                                         if (
                                             in_array(
                                                 $normalized_status,
-                                                ['processing', 'in progress', 'ongoing'],
+                                                ['processing', 'in progress', 'ongoing', 'under review', 'ready for release'],
                                                 true
                                             )
                                         ) {
@@ -764,14 +764,14 @@ $request_user_column = staffFindColumn(
                                         if (
                                             in_array(
                                                 $normalized_status,
-                                                ['completed', 'approved', 'released', 'resolved'],
+                                                ['completed', 'released', 'resolved'],
                                                 true
                                             )
                                         ) {
                                             $badge_class = 'bg-success';
                                         }
 
-                                        if ($normalized_status === 'rejected') {
+                                        if (in_array($normalized_status, ['rejected', 'cancelled'], true)) {
                                             $badge_class = 'bg-danger';
                                         }
 
@@ -836,12 +836,12 @@ $request_user_column = staffFindColumn(
                                                 <?php if ($request_id_column): ?>
 
                                                     <a
-                                                        href="request-details.php?id=<?= urlencode((string)$request_id) ?>"
+                                                        href="service-requests.php"
                                                         class="btn btn-sm btn-outline-primary"
                                                     >
 
                                                         <i class="bi bi-eye"></i>
-                                                        View
+                                                        Manage
 
                                                     </a>
 
